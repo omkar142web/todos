@@ -796,6 +796,8 @@
         document.getElementById("todoModal").addEventListener("click", (e) => {
           if (e.target.id === "todoModal") closeTodoModal();
         });
+
+        document.getElementById("todoModal").addEventListener("keydown", trapModalTab);
       }
 
       /* =========================================
@@ -1139,6 +1141,8 @@
 
         modal.classList.add("open");
 
+        lastFocused = document.activeElement;
+
         setTimeout(() => {
           document.getElementById("todoTitle").focus();
         }, 50);
@@ -1146,6 +1150,39 @@
 
       function closeTodoModal() {
         document.getElementById("todoModal").classList.remove("open");
+
+        if (lastFocused && document.contains(lastFocused)) {
+          lastFocused.focus();
+        }
+
+        lastFocused = null;
+      }
+
+      let lastFocused = null;
+
+      function trapModalTab(e) {
+        if (e.key !== "Tab") return;
+
+        const modal = document.getElementById("todoModal");
+
+        if (!modal.classList.contains("open")) return;
+
+        const items = [
+          ...modal.querySelectorAll("input, textarea, select, button"),
+        ].filter((el) => !el.disabled && el.type !== "hidden");
+
+        if (!items.length) return;
+
+        const first = items[0];
+        const last = items[items.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
 
       function editTodo(id) {
