@@ -427,6 +427,10 @@
       .btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
       .btn.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
       .btn.primary:hover { background: var(--accent-hover); }
+      .btn.danger { border-color: var(--danger); background: var(--danger); color: #1c1214; }
+      .btn.danger:hover { background: var(--danger); border-color: var(--danger); opacity: 0.88; }
+      .modal.narrow { max-width: 420px; }
+      .modal-sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
 
       /* Toast */
       .toast {
@@ -729,6 +733,56 @@
       </div>
     </div>
 
+    <!-- Confirm Modal -->
+
+    <div class="modal-backdrop" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="modal narrow">
+        <div class="modal-head">
+          <span class="modal-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </span>
+          <h2 id="confirmTitle">Are you sure?</h2>
+          <button class="modal-close" onclick="dismissConfirm(false)" aria-label="Close dialog">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+
+        <p class="modal-sub" id="confirmMessage"></p>
+
+        <div class="modal-actions">
+          <button class="btn" id="confirmCancel" onclick="dismissConfirm(false)">Cancel</button>
+          <button class="btn danger" id="confirmOk" onclick="dismissConfirm(true)">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Prompt Modal -->
+
+    <div class="modal-backdrop" id="promptModal" role="dialog" aria-modal="true" aria-labelledby="promptTitle">
+      <div class="modal narrow">
+        <div class="modal-head">
+          <span class="modal-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+          </span>
+          <h2 id="promptTitle">New folder</h2>
+          <button class="modal-close" onclick="dismissPrompt(null)" aria-label="Close dialog">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+
+        <p class="modal-sub" id="promptMessage"></p>
+
+        <div class="field">
+          <input id="promptInput" type="text" autocomplete="off" />
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn" onclick="dismissPrompt(null)">Cancel</button>
+          <button class="btn primary" id="promptOk" onclick="submitPrompt()">Create</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       /* =========================================
        DATA
@@ -846,6 +900,20 @@
         });
 
         window.addEventListener("popstate", () => {
+          if (
+            document.getElementById("confirmModal").classList.contains("open")
+          ) {
+            dismissConfirm(false, true);
+            return;
+          }
+
+          if (
+            document.getElementById("promptModal").classList.contains("open")
+          ) {
+            dismissPrompt(null, true);
+            return;
+          }
+
           if (!anyModalOpen()) return;
 
           hideModals();
@@ -875,6 +943,29 @@
         });
 
         document.getElementById("helpModal").addEventListener("keydown", trapModalTab);
+
+        document.getElementById("confirmModal").addEventListener("click", (e) => {
+          if (e.target.id === "confirmModal") dismissConfirm(false);
+        });
+
+        document.getElementById("confirmModal").addEventListener("keydown", trapModalTab);
+
+        document.getElementById("promptModal").addEventListener("click", (e) => {
+          if (e.target.id === "promptModal") dismissPrompt(null);
+        });
+
+        document.getElementById("promptModal").addEventListener("keydown", trapModalTab);
+
+        document.getElementById("promptModal").addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && e.target.tagName !== "BUTTON") {
+            e.preventDefault();
+            submitPrompt();
+          }
+        });
+
+        document.getElementById("promptInput").addEventListener("input", (e) => {
+          e.target.classList.remove("input-error");
+        });
       }
 
       /* =========================================
@@ -1171,16 +1262,23 @@
 
         if (!todo) return;
 
-        if (!confirm(`Delete "${todo.title}"?`)) return;
+        askConfirm({
+          title: "Delete todo?",
+          message: `"${todo.title}" will be permanently deleted.`,
+          confirmText: "Delete",
+        }).then((ok) => {
+          if (!ok) return;
+          if (!data.todos.some((t) => t.id === id)) return;
 
-        data.todos = data.todos.filter((t) => t.id !== id);
+          data.todos = data.todos.filter((t) => t.id !== id);
 
-        saveData();
-        updateCounts();
-        renderFolders();
-        render();
+          saveData();
+          updateCounts();
+          renderFolders();
+          render();
 
-        toast("Todo deleted");
+          toast("Todo deleted");
+        });
       }
 
       /* =========================================
@@ -1197,11 +1295,11 @@
           .classList.contains("open");
 
         hideModals();
+        cancelPendingOverlays();
 
         const modal = document.getElementById("todoModal");
 
         document.getElementById("editId").value = id || "";
-
         populateFolderSelect();
 
         if (todo) {
@@ -1248,10 +1346,7 @@
       let modalEntryPushed = false;
 
       function anyModalOpen() {
-        return (
-          document.getElementById("todoModal").classList.contains("open") ||
-          document.getElementById("helpModal").classList.contains("open")
-        );
+        return document.querySelector(".modal-backdrop.open") !== null;
       }
 
       function pushModalEntry() {
@@ -1267,8 +1362,9 @@
       }
 
       function hideModals() {
-        document.getElementById("todoModal").classList.remove("open");
-        document.getElementById("helpModal").classList.remove("open");
+        document
+          .querySelectorAll(".modal-backdrop.open")
+          .forEach((m) => m.classList.remove("open"));
       }
 
       function restoreModalFocus() {
@@ -1324,6 +1420,9 @@
 
         if (modal.classList.contains("open")) return;
 
+        hideModals();
+        cancelPendingOverlays();
+
         lastFocused = document.activeElement;
         pushModalEntry();
         modal.classList.add("open");
@@ -1337,6 +1436,130 @@
         hideModals();
         restoreModalFocus();
         popModalEntry();
+      }
+
+      let confirmState = null;
+      let promptState = null;
+
+      function askConfirm({ title, message, confirmText = "Delete" }) {
+        return new Promise((resolve) => {
+          document.getElementById("confirmTitle").textContent = title;
+          document.getElementById("confirmMessage").textContent = message;
+          document.getElementById("confirmOk").textContent = confirmText;
+
+          const ownsEntry = !anyModalOpen();
+          confirmState = { resolve, ownsEntry };
+
+          if (ownsEntry) {
+            lastFocused = document.activeElement;
+            pushModalEntry();
+          }
+
+          document.getElementById("confirmModal").classList.add("open");
+          document.getElementById("confirmCancel").focus();
+        });
+      }
+
+      function dismissConfirm(value, fromPop = false) {
+        const modal = document.getElementById("confirmModal");
+
+        if (!modal.classList.contains("open")) return;
+
+        modal.classList.remove("open");
+
+        const st = confirmState;
+        confirmState = null;
+
+        if (fromPop) {
+          modalEntryPushed = false;
+        } else if (st && st.ownsEntry) {
+          modalEntryPushed = false;
+          history.back();
+        }
+
+        restoreModalFocus();
+
+        if (st) st.resolve(value);
+      }
+
+      function askPrompt({ title, message, placeholder = "", confirmText = "Save" }) {
+        return new Promise((resolve) => {
+          document.getElementById("promptTitle").textContent = title;
+          document.getElementById("promptMessage").textContent = message;
+
+          const input = document.getElementById("promptInput");
+          input.value = "";
+          input.placeholder = placeholder;
+          input.setAttribute("aria-label", title);
+          input.classList.remove("input-error");
+
+          document.getElementById("promptOk").textContent = confirmText;
+
+          const ownsEntry = !anyModalOpen();
+          promptState = { resolve, ownsEntry };
+
+          if (ownsEntry) {
+            lastFocused = document.activeElement;
+            pushModalEntry();
+          }
+
+          document.getElementById("promptModal").classList.add("open");
+
+          setTimeout(() => {
+            document.getElementById("promptInput").focus();
+          }, 50);
+        });
+      }
+
+      function submitPrompt() {
+        if (!promptState) return;
+
+        const input = document.getElementById("promptInput");
+        const value = input.value.trim();
+
+        if (!value) {
+          input.classList.add("input-error");
+          input.focus();
+          return;
+        }
+
+        dismissPrompt(value);
+      }
+
+      function dismissPrompt(value, fromPop = false) {
+        const modal = document.getElementById("promptModal");
+
+        if (!modal.classList.contains("open")) return;
+
+        modal.classList.remove("open");
+
+        const st = promptState;
+        promptState = null;
+
+        if (fromPop) {
+          modalEntryPushed = false;
+        } else if (st && st.ownsEntry) {
+          modalEntryPushed = false;
+          history.back();
+        }
+
+        restoreModalFocus();
+
+        if (st) st.resolve(value);
+      }
+
+      function cancelPendingOverlays() {
+        if (confirmState) {
+          const st = confirmState;
+          confirmState = null;
+          st.resolve(false);
+        }
+
+        if (promptState) {
+          const st = promptState;
+          promptState = null;
+          st.resolve(null);
+        }
       }
 
       function saveTodo() {
@@ -1472,31 +1695,34 @@
       }
 
       function addFolder() {
-        const name = prompt("Folder name:");
+        askPrompt({
+          title: "New folder",
+          message: "Give your folder a name.",
+          placeholder: "e.g. Reading list",
+          confirmText: "Create folder",
+        }).then((cleanName) => {
+          if (cleanName === null) return;
 
-        if (!name || !name.trim()) return;
+          if (
+            data.folders.some(
+              (f) => f.name.toLowerCase() === cleanName.toLowerCase(),
+            )
+          ) {
+            toast("That folder already exists");
+            return;
+          }
 
-        const cleanName = name.trim();
+          data.folders.push({
+            id: uid(),
+            name: cleanName,
+          });
 
-        if (
-          data.folders.some(
-            (f) => f.name.toLowerCase() === cleanName.toLowerCase(),
-          )
-        ) {
-          toast("That folder already exists");
-          return;
-        }
+          saveData();
+          renderFolders();
+          populateFolderSelect();
 
-        data.folders.push({
-          id: uid(),
-          name: cleanName,
+          toast("Folder created");
         });
-
-        saveData();
-        renderFolders();
-        populateFolderSelect();
-
-        toast("Folder created");
       }
 
       function deleteFolder(id) {
@@ -1504,32 +1730,35 @@
 
         if (!folder) return;
 
-        if (
-          !confirm(`Delete "${folder.name}"? Todos will remain in your inbox.`)
-        ) {
-          return;
-        }
+        askConfirm({
+          title: "Delete folder?",
+          message: `"${folder.name}" will be removed. Its todos will stay in your inbox.`,
+          confirmText: "Delete",
+        }).then((ok) => {
+          if (!ok) return;
+          if (!data.folders.some((f) => f.id === id)) return;
 
-        data.todos.forEach((todo) => {
-          if (todo.folderId === id) {
-            todo.folderId = "";
+          data.todos.forEach((todo) => {
+            if (todo.folderId === id) {
+              todo.folderId = "";
+            }
+          });
+
+          data.folders = data.folders.filter((f) => f.id !== id);
+
+          if (currentView === "folder:" + id) {
+            currentView = "inbox";
           }
+
+          saveData();
+
+          renderFolders();
+          syncFolderSelect();
+          updateCounts();
+          render();
+
+          toast("Folder deleted");
         });
-
-        data.folders = data.folders.filter((f) => f.id !== id);
-
-        if (currentView === "folder:" + id) {
-          currentView = "inbox";
-        }
-
-        saveData();
-
-        renderFolders();
-        syncFolderSelect();
-        updateCounts();
-        render();
-
-        toast("Folder deleted");
       }
 
       function syncFolderSelect() {
@@ -1596,6 +1825,12 @@
             active.tagName === "TEXTAREA" ||
             active.tagName === "SELECT");
 
+        const overlayOpen =
+          document.getElementById("confirmModal").classList.contains("open") ||
+          document.getElementById("promptModal").classList.contains("open");
+
+        if (overlayOpen && e.key !== "Escape") return;
+
         if (e.key === "/" && !typing) {
           e.preventDefault();
           focusSearch();
@@ -1617,6 +1852,12 @@
         }
 
         if (e.key === "Escape") {
+          const confirmOpen = document
+            .getElementById("confirmModal")
+            .classList.contains("open");
+          const promptOpen = document
+            .getElementById("promptModal")
+            .classList.contains("open");
           const helpOpen = document
             .getElementById("helpModal")
             .classList.contains("open");
@@ -1624,7 +1865,11 @@
             .getElementById("todoModal")
             .classList.contains("open");
 
-          if (helpOpen) {
+          if (confirmOpen) {
+            dismissConfirm(false);
+          } else if (promptOpen) {
+            dismissPrompt(null);
+          } else if (helpOpen) {
             closeHelp();
           } else if (todoOpen) {
             closeTodoModal();
