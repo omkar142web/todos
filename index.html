@@ -405,6 +405,10 @@
       .modal-close { width: 32px; height: 32px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); border-radius: 9px; display: grid; place-items: center; }
       .modal-close svg { width: 15px; height: 15px; }
       .modal-close:hover { color: var(--text); border-color: var(--border-strong); }
+      .shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 2px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+      .shortcut-row:first-of-type { border-top: 0; }
+      .shortcut-row span:first-child { color: var(--text); font-weight: 550; }
+      .shortcut-row kbd { border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; margin-left: 4px; font-size: 11px; background: var(--surface-2); color: var(--text); font-weight: 700; font-family: inherit; }
       .field { margin-bottom: 14px; }
       .field label { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
       .field label svg { width: 13px; height: 13px; }
@@ -557,7 +561,7 @@
             <div class="progress-top"><span>Progress</span><span id="progressText">0 / 0</span></div>
             <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
           </div>
-          <div class="kbd-hints"><span><kbd>/</kbd> search</span><span><kbd>N</kbd> new</span><span><kbd>esc</kbd> close</span></div>
+          <div class="kbd-hints"><span><kbd>/</kbd> search</span><span><kbd>N</kbd> new</span><span><kbd>?</kbd> keys</span><span><kbd>esc</kbd> close</span></div>
         </div>
       </aside>
 
@@ -704,6 +708,27 @@
       <span id="toastText"></span>
     </div>
 
+    <!-- Shortcuts Modal -->
+
+    <div class="modal-backdrop" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="modal">
+        <div class="modal-head">
+          <span class="modal-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M7 12h10"/><path d="M9 16h6"/></svg>
+          </span>
+          <h2 id="helpTitle">Shortcuts</h2>
+          <button class="modal-close" onclick="closeHelp()" aria-label="Close dialog">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="shortcut-row"><span>New todo</span><span><kbd>N</kbd></span></div>
+        <div class="shortcut-row"><span>Search todos</span><span><kbd>/</kbd><kbd>Ctrl K</kbd></span></div>
+        <div class="shortcut-row"><span>This list</span><span><kbd>?</kbd></span></div>
+        <div class="shortcut-row"><span>Close dialog</span><span><kbd>Esc</kbd></span></div>
+      </div>
+    </div>
+
     <script>
       /* =========================================
        DATA
@@ -817,6 +842,12 @@
         });
 
         document.getElementById("todoModal").addEventListener("keydown", trapModalTab);
+
+        document.getElementById("helpModal").addEventListener("click", (e) => {
+          if (e.target.id === "helpModal") closeHelp();
+        });
+
+        document.getElementById("helpModal").addEventListener("keydown", trapModalTab);
       }
 
       /* =========================================
@@ -1130,6 +1161,8 @@
     ========================================= */
 
       function openTodoModal(id = null) {
+        closeHelp();
+
         const modal = document.getElementById("todoModal");
 
         document.getElementById("editId").value = id || "";
@@ -1182,9 +1215,9 @@
       function trapModalTab(e) {
         if (e.key !== "Tab") return;
 
-        const modal = document.getElementById("todoModal");
+        const modal = e.currentTarget;
 
-        if (!modal.classList.contains("open")) return;
+        if (!modal || !modal.classList.contains("open")) return;
 
         const items = [
           ...modal.querySelectorAll("input, textarea, select, button"),
@@ -1206,6 +1239,33 @@
 
       function editTodo(id) {
         openTodoModal(id);
+      }
+
+      function openHelp() {
+        if (document.getElementById("todoModal").classList.contains("open")) {
+          return;
+        }
+
+        const modal = document.getElementById("helpModal");
+
+        if (modal.classList.contains("open")) return;
+
+        lastFocused = document.activeElement;
+        modal.classList.add("open");
+      }
+
+      function closeHelp() {
+        const modal = document.getElementById("helpModal");
+
+        if (!modal.classList.contains("open")) return;
+
+        modal.classList.remove("open");
+
+        if (lastFocused && document.contains(lastFocused)) {
+          lastFocused.focus();
+        }
+
+        lastFocused = null;
       }
 
       function saveTodo() {
@@ -1461,7 +1521,13 @@
           openTodoModal();
         }
 
+        if (e.key === "?" && !typing) {
+          e.preventDefault();
+          openHelp();
+        }
+
         if (e.key === "Escape") {
+          closeHelp();
           closeTodoModal();
         }
       }
