@@ -845,6 +845,14 @@
           render();
         });
 
+        window.addEventListener("popstate", () => {
+          if (!anyModalOpen()) return;
+
+          hideModals();
+          modalEntryPushed = false;
+          restoreModalFocus();
+        });
+
         document.getElementById("todoModal").addEventListener("keydown", trapModalTab);
 
         document.getElementById("todoModal").addEventListener("keydown", (e) => {
@@ -1180,7 +1188,15 @@
     ========================================= */
 
       function openTodoModal(id = null) {
-        closeHelp();
+        const todo = id ? data.todos.find((t) => t.id === id) : null;
+
+        if (id && !todo) return;
+
+        const helpWasOpen = document
+          .getElementById("helpModal")
+          .classList.contains("open");
+
+        hideModals();
 
         const modal = document.getElementById("todoModal");
 
@@ -1188,11 +1204,7 @@
 
         populateFolderSelect();
 
-        if (id) {
-          const todo = data.todos.find((t) => t.id === id);
-
-          if (!todo) return;
-
+        if (todo) {
           document.getElementById("modalTitle").textContent = "Edit Todo";
           document.getElementById("todoTitle").value = todo.title;
           document.getElementById("todoDescription").value =
@@ -1210,9 +1222,12 @@
           document.getElementById("todoFolder").value = "";
         }
 
+        pushModalEntry();
         modal.classList.add("open");
 
-        lastFocused = document.activeElement;
+        if (!helpWasOpen) {
+          lastFocused = document.activeElement;
+        }
 
         setTimeout(() => {
           document.getElementById("todoTitle").focus();
@@ -1220,8 +1235,43 @@
       }
 
       function closeTodoModal() {
-        document.getElementById("todoModal").classList.remove("open");
+        if (!document.getElementById("todoModal").classList.contains("open")) {
+          return;
+        }
 
+        hideModals();
+        restoreModalFocus();
+        popModalEntry();
+      }
+
+      let lastFocused = null;
+      let modalEntryPushed = false;
+
+      function anyModalOpen() {
+        return (
+          document.getElementById("todoModal").classList.contains("open") ||
+          document.getElementById("helpModal").classList.contains("open")
+        );
+      }
+
+      function pushModalEntry() {
+        if (modalEntryPushed) return;
+
+        try {
+          history.pushState({ modal: true }, "");
+          modalEntryPushed = true;
+        } catch {
+          // History unavailable (e.g. restricted webview): modals still
+          // work, system back just navigates normally.
+        }
+      }
+
+      function hideModals() {
+        document.getElementById("todoModal").classList.remove("open");
+        document.getElementById("helpModal").classList.remove("open");
+      }
+
+      function restoreModalFocus() {
         if (lastFocused && document.contains(lastFocused)) {
           lastFocused.focus();
         }
@@ -1229,7 +1279,12 @@
         lastFocused = null;
       }
 
-      let lastFocused = null;
+      function popModalEntry() {
+        if (!modalEntryPushed) return;
+
+        modalEntryPushed = false;
+        history.back();
+      }
 
       function trapModalTab(e) {
         if (e.key !== "Tab") return;
@@ -1270,21 +1325,18 @@
         if (modal.classList.contains("open")) return;
 
         lastFocused = document.activeElement;
+        pushModalEntry();
         modal.classList.add("open");
       }
 
       function closeHelp() {
-        const modal = document.getElementById("helpModal");
-
-        if (!modal.classList.contains("open")) return;
-
-        modal.classList.remove("open");
-
-        if (lastFocused && document.contains(lastFocused)) {
-          lastFocused.focus();
+        if (!document.getElementById("helpModal").classList.contains("open")) {
+          return;
         }
 
-        lastFocused = null;
+        hideModals();
+        restoreModalFocus();
+        popModalEntry();
       }
 
       function saveTodo() {
