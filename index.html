@@ -1475,10 +1475,22 @@
         saveData();
 
         renderFolders();
+        syncFolderSelect();
         updateCounts();
         render();
 
         toast("Folder deleted");
+      }
+
+      function syncFolderSelect() {
+        const modal = document.getElementById("todoModal");
+        const select = document.getElementById("todoFolder");
+
+        if (!modal.classList.contains("open") || !select) return;
+
+        const keep = select.value;
+        populateFolderSelect();
+        select.value = data.folders.some((f) => f.id === keep) ? keep : "";
       }
 
       /* =========================================
