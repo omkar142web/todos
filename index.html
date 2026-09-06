@@ -174,18 +174,18 @@
       }
       .section-label .hint { text-transform: none; letter-spacing: 0; font-weight: 550; }
 
-      .folder-row { display: flex; align-items: center; gap: 4px; }
-      .folder-row .nav-item { flex: 1; min-width: 0; }
       .folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .folder-dot { width: 8px; height: 8px; border-radius: 99px; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
       .folder-delete {
         width: 32px; height: 32px;
+        flex-shrink: 0;
         border: 0; border-radius: 8px;
         background: transparent; color: var(--muted-2);
+        cursor: pointer;
         opacity: 0; display: grid; place-items: center;
         transition: all var(--transition);
       }
-      .folder-row:hover .folder-delete, .folder-delete:focus-visible { opacity: 1; }
+      .nav-item:hover .folder-delete, .nav-item:focus-within .folder-delete, .folder-delete:focus-visible { opacity: 1; }
       .folder-delete svg { width: 15px; height: 15px; }
       .folder-delete:hover { color: var(--danger); background: var(--danger-bg); }
 
@@ -1371,8 +1371,7 @@
             ).length;
 
             return `
-        <div class="folder-row">
-          <button
+        <button
             class="nav-item ${currentView === "folder:" + folder.id ? "active" : ""}"
             data-folder="${escapeAttr(folder.id)}"
             onclick="changeFolder('${folder.id}')"
@@ -1383,15 +1382,16 @@
             <span class="nav-count"${count ? "" : " hidden"}>
               ${count || ""}
             </span>
+            <span
+              class="folder-delete"
+              role="button"
+              tabindex="0"
+              title="Delete folder"
+              aria-label="Delete ${escapeAttr(folder.name)}"
+              onclick="event.stopPropagation();deleteFolder('${folder.id}')"
+              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();deleteFolder('${folder.id}')}"
+            >${ICON_TRASH}</span>
           </button>
-
-          <button
-            class="folder-delete"
-            onclick="deleteFolder('${folder.id}')"
-            title="Delete folder"
-            aria-label="Delete ${escapeAttr(folder.name)}"
-          >${ICON_TRASH}</button>
-        </div>
       `;
           })
           .join("");
