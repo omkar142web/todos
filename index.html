@@ -802,6 +802,20 @@
           if (e.target.id === "todoModal") closeTodoModal();
         });
 
+        window.addEventListener("storage", (e) => {
+          if (e.key !== STORAGE_KEY) return;
+          if (
+            document.getElementById("todoModal").classList.contains("open")
+          ) {
+            return;
+          }
+
+          data = loadData();
+          renderFolders();
+          updateCounts();
+          render();
+        });
+
         document.getElementById("todoModal").addEventListener("keydown", trapModalTab);
       }
 
