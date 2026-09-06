@@ -739,10 +739,15 @@
 
           if (!saved) return structuredClone(defaultData);
 
-          return {
+          const merged = {
             ...structuredClone(defaultData),
             ...JSON.parse(saved),
           };
+
+          if (!Array.isArray(merged.todos)) merged.todos = [];
+          if (!Array.isArray(merged.folders)) merged.folders = [];
+
+          return merged;
         } catch {
           return structuredClone(defaultData);
         }
@@ -1199,12 +1204,17 @@
           return;
         }
 
+        const selectedFolderId =
+          document.getElementById("todoFolder").value;
+
         const todoData = {
           title,
           description: document.getElementById("todoDescription").value.trim(),
           due: document.getElementById("todoDue").value,
           priority: document.getElementById("todoPriority").value,
-          folderId: document.getElementById("todoFolder").value,
+          folderId: data.folders.some((f) => f.id === selectedFolderId)
+            ? selectedFolderId
+            : "",
         };
 
         if (id) {
