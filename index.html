@@ -1530,13 +1530,30 @@
         }
 
         if (e.key === "Escape") {
-          closeHelp();
-          closeTodoModal();
+          const helpOpen = document
+            .getElementById("helpModal")
+            .classList.contains("open");
+          const todoOpen = document
+            .getElementById("todoModal")
+            .classList.contains("open");
+
+          if (helpOpen) {
+            closeHelp();
+          } else if (todoOpen) {
+            closeTodoModal();
+          } else if (
+            document.activeElement ===
+            document.getElementById("searchInput")
+          ) {
+            document.activeElement.blur();
+          }
         }
       }
 
       function focusSearch() {
         const search = document.getElementById("searchInput");
+
+        if (!search) return;
 
         search.focus();
         search.select();
