@@ -163,6 +163,7 @@
         font-variant-numeric: tabular-nums;
       }
       .nav-item.active .nav-count { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+      .nav-count[hidden] { display: none; }
 
       .section-label {
         display: flex; align-items: center; justify-content: space-between;
@@ -175,7 +176,7 @@
 
       .folder-row { display: flex; align-items: center; gap: 4px; }
       .folder-row .nav-item { flex: 1; min-width: 0; }
-      .folder-row .nav-item span:last-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .folder-dot { width: 8px; height: 8px; border-radius: 99px; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
       .folder-delete {
         width: 32px; height: 32px;
@@ -1047,6 +1048,7 @@
         input.value = "";
 
         updateCounts();
+        renderFolders();
         render();
 
         toast("Todo added");
@@ -1061,6 +1063,7 @@
 
         saveData();
         updateCounts();
+        renderFolders();
         render();
 
         toast(todo.completed ? "Todo completed" : "Todo reopened");
@@ -1095,6 +1098,7 @@
 
         saveData();
         updateCounts();
+        renderFolders();
         render();
 
         toast("Todo deleted");
@@ -1186,6 +1190,7 @@
 
         saveData();
         updateCounts();
+        renderFolders();
         render();
         closeTodoModal();
       }
@@ -1213,8 +1218,12 @@
         const container = document.getElementById("folderList");
 
         container.innerHTML = data.folders
-          .map(
-            (folder) => `
+          .map((folder) => {
+            const count = data.todos.filter(
+              (t) => t.folderId === folder.id && !t.completed,
+            ).length;
+
+            return `
         <div class="folder-row">
           <button
             class="nav-item ${currentView === "folder:" + folder.id ? "active" : ""}"
@@ -1223,13 +1232,9 @@
           >
             <span class="nav-icon">${ICON_FOLDER}</span>
             <span class="folder-dot" style="background:${folderColor(folder.id)}"></span>
-            <span>${escapeHTML(folder.name)}</span>
-            <span class="nav-count">
-              ${
-                data.todos.filter(
-                  (t) => t.folderId === folder.id && !t.completed,
-                ).length || ""
-              }
+            <span class="folder-name">${escapeHTML(folder.name)}</span>
+            <span class="nav-count"${count ? "" : " hidden"}>
+              ${count || ""}
             </span>
           </button>
 
@@ -1240,8 +1245,8 @@
             aria-label="Delete ${escapeAttr(folder.name)}"
           >${ICON_TRASH}</button>
         </div>
-      `,
-          )
+      `;
+          })
           .join("");
 
         const hint = document.getElementById("folderHint");
@@ -1336,15 +1341,19 @@
       function updateCounts() {
         const active = data.todos.filter((t) => !t.completed);
 
-        document.getElementById("inboxCount").textContent = active.length || "";
+        setCount("inboxCount", active.length);
 
-        document.getElementById("completedCount").textContent =
-          data.todos.filter((t) => t.completed).length || "";
+        setCount(
+          "completedCount",
+          data.todos.filter((t) => t.completed).length,
+        );
 
         const today = todayString();
 
-        document.getElementById("todayCount").textContent =
-          active.filter((t) => t.due === today).length || "";
+        setCount(
+          "todayCount",
+          active.filter((t) => t.due === today).length,
+        );
 
         const total = data.todos.length;
         const done = data.todos.filter((t) => t.completed).length;
@@ -1353,8 +1362,15 @@
         const txt = document.getElementById("progressText");
         if (bar) bar.style.width = pct + "%";
         if (txt) txt.textContent = done + " / " + total;
+      }
 
-        renderFolders();
+      function setCount(id, count) {
+        const el = document.getElementById(id);
+
+        if (!el) return;
+
+        el.textContent = count || "";
+        el.hidden = !count;
       }
 
       /* =========================================
