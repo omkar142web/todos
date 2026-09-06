@@ -420,6 +420,7 @@
         transition: border var(--transition), box-shadow var(--transition);
       }
       .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--border-strong); box-shadow: var(--ring); }
+      .field input.input-error { border-color: var(--danger) !important; box-shadow: none; }
       .field textarea { min-height: 90px; resize: vertical; }
       .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
       .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
@@ -843,6 +844,21 @@
         });
 
         document.getElementById("todoModal").addEventListener("keydown", trapModalTab);
+
+        document.getElementById("todoModal").addEventListener("keydown", (e) => {
+          if (
+            e.key === "Enter" &&
+            e.target.tagName !== "TEXTAREA" &&
+            e.target.tagName !== "BUTTON"
+          ) {
+            e.preventDefault();
+            saveTodo();
+          }
+        });
+
+        document.getElementById("todoTitle").addEventListener("input", (e) => {
+          e.target.classList.remove("input-error");
+        });
 
         document.getElementById("helpModal").addEventListener("click", (e) => {
           if (e.target.id === "helpModal") closeHelp();
@@ -1271,13 +1287,18 @@
 
       function saveTodo() {
         const id = document.getElementById("editId").value;
+        const titleInput = document.getElementById("todoTitle");
 
-        const title = document.getElementById("todoTitle").value.trim();
+        const title = titleInput.value.trim();
 
         if (!title) {
-          document.getElementById("todoTitle").focus();
+          titleInput.classList.add("input-error");
+          titleInput.focus();
+          toast("Enter a title to save");
           return;
         }
+
+        titleInput.classList.remove("input-error");
 
         const selectedFolderId =
           document.getElementById("todoFolder").value;
