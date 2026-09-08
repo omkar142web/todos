@@ -445,6 +445,8 @@
         max-width: min(360px, calc(100vw - 44px));
       }
       .toast.show { opacity: 1; transform: none; }
+      .toast.success { background: var(--accent); color: var(--on-accent); }
+      .toast.error { background: var(--danger); color: #1c1214; }
       .toast-ico { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: rgba(0,0,0,.18); flex-shrink: 0; }
       .toast-ico svg { width: 14px; height: 14px; }
 
@@ -705,8 +707,8 @@
       </div>
     </div>
 
-    <div class="toast" id="toast" role="status">
-      <span class="toast-ico" aria-hidden="true">
+    <div class="toast success" id="toast" role="status">
+      <span class="toast-ico" id="toastIcon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
       </span>
       <span id="toastText"></span>
@@ -802,6 +804,7 @@
 
       const FOLDER_COLORS = ["#b8b8b2", "#9db8ad", "#c0b191", "#b39aa5", "#93a7c4", "#a8a8c9", "#8fb0a5"];
       const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+      const ICON_ALERT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>';
       const ICON_FOLDER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
       const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
       const ICON_PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
@@ -836,7 +839,7 @@
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         } catch {
-          toast("Could not save — storage is full");
+          toast("Could not save — storage is full", "error");
         }
       }
 
@@ -1571,7 +1574,7 @@
         if (!title) {
           titleInput.classList.add("input-error");
           titleInput.focus();
-          toast("Enter a title to save");
+          toast("Enter a title to save", "error");
           return;
         }
 
@@ -1708,7 +1711,7 @@
               (f) => f.name.toLowerCase() === cleanName.toLowerCase(),
             )
           ) {
-            toast("That folder already exists");
+            toast("That folder already exists", "error");
             return;
           }
 
@@ -1933,12 +1936,16 @@
 
       let toastTimer;
 
-      function toast(message) {
+      function toast(message, type = "success") {
         const element = document.getElementById("toast");
         const text = document.getElementById("toastText");
+        const icon = document.getElementById("toastIcon");
 
         if (text) text.textContent = message;
         else element.textContent = message;
+        element.classList.remove("success", "error");
+        element.classList.add(type === "error" ? "error" : "success");
+        if (icon) icon.innerHTML = type === "error" ? ICON_ALERT : ICON_CHECK;
         element.classList.add("show");
 
         clearTimeout(toastTimer);
