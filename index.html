@@ -1221,7 +1221,7 @@
           completed: false,
           due: "",
           priority: "none",
-          folderId: "",
+          folderId: getCurrentFolderId(),
           createdAt: Date.now(),
         });
 
@@ -1297,6 +1297,12 @@
        MODAL
     ========================================= */
 
+      function getCurrentFolderId() {
+        if (!currentView.startsWith("folder:")) return "";
+        const folderId = currentView.replace("folder:", "");
+        return data.folders.some((f) => f.id === folderId) ? folderId : "";
+      }
+
       function openTodoModal(id = null) {
         const todo = id ? data.todos.find((t) => t.id === id) : null;
 
@@ -1329,7 +1335,7 @@
           document.getElementById("todoDescription").value = "";
           document.getElementById("todoDue").value = "";
           document.getElementById("todoPriority").value = "none";
-          document.getElementById("todoFolder").value = "";
+          document.getElementById("todoFolder").value = getCurrentFolderId();
         }
 
         pushModalEntry();
