@@ -1311,3 +1311,76 @@ svg {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- Sync + Auth ---------- */
+.sync-card {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--muted-2);
+  flex-shrink: 0;
+}
+.sync-dot.on {
+  background: var(--success);
+}
+.sync-dot.busy {
+  background: var(--warning);
+}
+.sync-dot.err {
+  background: var(--danger);
+}
+.sync-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sync-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  flex-shrink: 0;
+}
+.sync-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+.auth-error {
+  color: var(--danger);
+  margin: 0 0 12px;
+}
+.auth-actions {
+  justify-content: space-between;
+}
+.auth-hint {
+  margin: 14px 0 0;
+  font-size: 12px;
+}
+.auth-hint kbd {
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 11px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 700;
+  font-family: inherit;
+}

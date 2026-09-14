@@ -46,7 +46,15 @@ function loadData() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
 
-    if (!saved) return structuredClone(defaultData);
+    if (!saved) {
+      const fresh = structuredClone(defaultData);
+      const now = Date.now();
+      for (const f of fresh.folders) {
+        f.createdAt = now;
+        f.updatedAt = now;
+      }
+      return fresh;
+    }
 
     const merged = {
       ...structuredClone(defaultData),
@@ -55,6 +63,18 @@ function loadData() {
 
     if (!Array.isArray(merged.todos)) merged.todos = [];
     if (!Array.isArray(merged.folders)) merged.folders = [];
+
+    const now = Date.now();
+    for (const t of merged.todos) {
+      if (!t.id) t.id = uid();
+      if (typeof t.createdAt !== "number") t.createdAt = now;
+      if (typeof t.updatedAt !== "number") t.updatedAt = t.createdAt || now;
+    }
+    for (const f of merged.folders) {
+      if (!f.id) f.id = uid();
+      if (typeof f.createdAt !== "number") f.createdAt = now;
+      if (typeof f.updatedAt !== "number") f.updatedAt = f.createdAt || now;
+    }
 
     return merged;
   } catch {
@@ -450,9 +470,11 @@ function quickAdd() {
     priority: "none",
     folderId: getCurrentFolderId(),
     createdAt: Date.now(),
+    updatedAt: Date.now(),
   });
 
   saveData();
+  queueTodoUpsert(data.todos[0]);
 
   input.value = "";
 
@@ -469,8 +491,10 @@ function toggleTodo(id) {
   if (!todo) return;
 
   todo.completed = !todo.completed;
+  todo.updatedAt = Date.now();
 
   saveData();
+  queueTodoUpsert(todo);
   updateCounts();
   renderFolders();
   render();
@@ -491,8 +515,10 @@ function updateTitle(id, value) {
   }
 
   todo.title = value;
+  todo.updatedAt = Date.now();
 
   saveData();
+  queueTodoUpsert(todo);
   render();
 }
 
@@ -512,6 +538,7 @@ function deleteTodo(id) {
     data.todos = data.todos.filter((t) => t.id !== id);
 
     saveData();
+    queueTodoDelete(id);
     updateCounts();
     renderFolders();
     render();
@@ -837,15 +864,20 @@ function saveTodo() {
 
     if (todo) {
       Object.assign(todo, todoData);
+      todo.updatedAt = Date.now();
+      queueTodoUpsert(todo);
       toast("Todo updated");
     }
   } else {
+    const now = Date.now();
     data.todos.unshift({
       id: uid(),
       ...todoData,
       completed: false,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     });
+    queueTodoUpsert(data.todos[0]);
 
     toast("Todo created");
   }
@@ -957,9 +989,12 @@ function addFolder() {
     data.folders.push({
       id: uid(),
       name: cleanName,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
 
     saveData();
+    queueFolderUpsert(data.folders[data.folders.length - 1]);
     renderFolders();
     populateFolderSelect();
 
@@ -983,6 +1018,8 @@ function deleteFolder(id) {
     data.todos.forEach((todo) => {
       if (todo.folderId === id) {
         todo.folderId = "";
+        todo.updatedAt = Date.now();
+        queueTodoUpsert(todo);
       }
     });
 
@@ -993,6 +1030,7 @@ function deleteFolder(id) {
     }
 
     saveData();
+    queueFolderDelete(id);
 
     renderFolders();
     syncFolderSelect();
@@ -1069,7 +1107,9 @@ function handleShortcuts(e) {
 
   const overlayOpen =
     document.getElementById("confirmModal").classList.contains("open") ||
-    document.getElementById("promptModal").classList.contains("open");
+    document.getElementById("promptModal").classList.contains("open") ||
+    (document.getElementById("authModal") &&
+      document.getElementById("authModal").classList.contains("open"));
 
   if (overlayOpen && e.key !== "Escape") return;
 
@@ -1093,10 +1133,13 @@ function handleShortcuts(e) {
     openHelp();
   }
 
-  if (e.key === "Escape") {
-    const confirmOpen = document
-      .getElementById("confirmModal")
-      .classList.contains("open");
+    if (e.key === "Escape") {
+      const authOpen =
+        document.getElementById("authModal") &&
+        document.getElementById("authModal").classList.contains("open");
+      const confirmOpen = document
+        .getElementById("confirmModal")
+        .classList.contains("open");
     const promptOpen = document
       .getElementById("promptModal")
       .classList.contains("open");
@@ -1107,8 +1150,10 @@ function handleShortcuts(e) {
       .getElementById("todoModal")
       .classList.contains("open");
 
-    if (confirmOpen) {
-      dismissConfirm(false);
+      if (authOpen) {
+        closeAuthModal();
+      } else if (confirmOpen) {
+        dismissConfirm(false);
     } else if (promptOpen) {
       dismissPrompt(null);
     } else if (helpOpen) {
@@ -1193,8 +1238,611 @@ function toast(message, type = "success") {
   }, 1800);
 }
 
-/* =========================================
+      /* =========================================
+       SYNC (offline-first, own server)
+    ========================================= */
+
+      const TOKEN_KEY = "focus-token";
+      const USERNAME_KEY = "focus-username";
+      const QUEUE_KEY = "focus-queue";
+      const SERVER_IDS_KEY = "focus-server-ids";
+
+      let authToken = null;
+      let authUsername = "";
+      let authMode = "login";
+      let syncState = "local";
+      let flushing = false;
+      let pushTimer = null;
+      let lastPullAt = 0;
+      let lastServerIds = { todos: [], folders: [] };
+
+      try {
+        authToken = localStorage.getItem(TOKEN_KEY) || null;
+        authUsername = localStorage.getItem(USERNAME_KEY) || "";
+        // Drop legacy email identity (pre-username migration).
+        try {
+          localStorage.removeItem("focus-email");
+        } catch {
+          // ignore
+        }
+        lastServerIds = JSON.parse(
+          localStorage.getItem(SERVER_IDS_KEY) || '{"todos":[],"folders":[]}',
+        );
+        if (!Array.isArray(lastServerIds.todos)) lastServerIds.todos = [];
+        if (!Array.isArray(lastServerIds.folders))
+          lastServerIds.folders = [];
+      } catch {
+        authToken = null;
+        authUsername = "";
+      }
+
+      function apiBase() {
+        return (window.FOCUS_API_URL || "").replace(/\/$/, "");
+      }
+
+      async function apiFetch(path, options = {}) {
+        const headers = { ...(options.headers || {}) };
+        if (options.body !== undefined && !headers["Content-Type"]) {
+          headers["Content-Type"] = "application/json";
+        }
+        if (authToken) headers["Authorization"] = "Bearer " + authToken;
+        let res;
+        try {
+          res = await fetch(apiBase() + path, { ...options, headers });
+        } catch {
+          const err = new Error("Network unavailable");
+          err.code = "NETWORK";
+          throw err;
+        }
+        let body = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        if (res.status === 401) {
+          const err = new Error(
+            (body && body.error) || "Session expired — sign in again",
+          );
+          err.code = "AUTH";
+          throw err;
+        }
+        if (!res.ok) {
+          const err = new Error((body && body.error) || "Request failed");
+          err.code = "HTTP_" + res.status;
+          err.status = res.status;
+          err.body = body;
+          throw err;
+        }
+        return body;
+      }
+
+      function setSync(state, text) {
+        syncState = state;
+        const dot = document.getElementById("syncDot");
+        const label = document.getElementById("syncText");
+        if (dot) {
+          dot.classList.remove("on", "busy", "err");
+          if (state === "on") dot.classList.add("on");
+          else if (state === "busy") dot.classList.add("busy");
+          else if (state === "err") dot.classList.add("err");
+        }
+        if (label && text !== undefined) label.textContent = text;
+      }
+
+      function refreshAuthUI() {
+        const btn = document.getElementById("syncBtn");
+        const label = document.getElementById("syncText");
+        if (authToken) {
+          if (label && syncState !== "busy")
+            label.textContent = authUsername || "Synced";
+          if (btn) {
+            btn.textContent = "Sign out";
+            btn.onclick = logout;
+          }
+        } else {
+          if (label) label.textContent = "Local only";
+          if (btn) {
+            btn.textContent = "Sign in";
+            btn.onclick = openAuthModal;
+          }
+          setSync("local");
+        }
+      }
+
+      function loadQueue() {
+        try {
+          const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
+          return Array.isArray(q) ? q : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function saveQueue(q) {
+        try {
+          localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+        } catch {
+          // queue drop on quota — local data is still safe
+        }
+      }
+
+      function queueOp(op) {
+        if (!authToken) return;
+        const q = loadQueue();
+        q.push(op);
+        saveQueue(q);
+        schedulePush();
+      }
+
+      function queueTodoUpsert(todo) {
+        if (!authToken || !todo) return;
+        const q = loadQueue().filter(
+          (o) => !(o.op === "upsert-todo" && o.todo && o.todo.id === todo.id),
+        );
+        q.push({ op: "upsert-todo", todo: { ...todo } });
+        saveQueue(q);
+        schedulePush();
+      }
+
+      function queueTodoDelete(id) {
+        if (!authToken) return;
+        const q = loadQueue().filter(
+          (o) => !(o.op === "upsert-todo" && o.todo && o.todo.id === id),
+        );
+        q.push({ op: "delete-todo", id });
+        saveQueue(q);
+        schedulePush();
+      }
+
+      function queueFolderUpsert(folder) {
+        if (!authToken || !folder) return;
+        const q = loadQueue().filter(
+          (o) =>
+            !(
+              o.op === "upsert-folder" &&
+              o.folder &&
+              o.folder.id === folder.id
+            ),
+        );
+        q.push({ op: "upsert-folder", folder: { ...folder } });
+        saveQueue(q);
+        schedulePush();
+      }
+
+      function queueFolderDelete(id) {
+        if (!authToken) return;
+        const q = loadQueue().filter(
+          (o) => !(o.op === "upsert-folder" && o.folder && o.folder.id === id),
+        );
+        q.push({ op: "delete-folder", id });
+        saveQueue(q);
+        schedulePush();
+      }
+
+      function schedulePush() {
+        if (!authToken) return;
+        clearTimeout(pushTimer);
+        pushTimer = setTimeout(() => {
+          flushQueue();
+        }, 800);
+      }
+
+      async function flushQueue() {
+        if (!authToken || flushing) return;
+        if (!navigator.onLine) {
+          setSync("err", "Offline — changes queued");
+          return;
+        }
+        flushing = true;
+        setSync("busy", "Syncing…");
+        try {
+          let q = loadQueue();
+          while (q.length) {
+            const op = q[0];
+            try {
+              await sendOp(op);
+            } catch (err) {
+              if (err && err.code === "AUTH") {
+                logout(true);
+                return;
+              }
+              if (err && err.code === "NETWORK") {
+                setSync("err", "Offline — changes queued");
+                return;
+              }
+              if (err && err.status === 409) {
+                // e.g. duplicate folder name: drop op, reconcile from server
+                q.shift();
+                saveQueue(q);
+                continue;
+              }
+              setSync("err", "Sync failed — will retry");
+              return;
+            }
+            q.shift();
+            saveQueue(q);
+          }
+          setSync("on", authUsername ? "Synced · " + authUsername : "Synced");
+          snapshotServerIds();
+        } finally {
+          flushing = false;
+          refreshAuthUI();
+          if (syncState === "busy") setSync("on", "Synced");
+        }
+      }
+
+      async function sendOp(op) {
+        if (op.op === "upsert-todo") {
+          const t = op.todo;
+          await apiFetch("/api/todos/" + encodeURIComponent(t.id), {
+            method: "PUT",
+            body: JSON.stringify({
+              title: t.title,
+              description: t.description || "",
+              due: t.due || "",
+              priority: t.priority || "none",
+              folderId: t.folderId || "",
+              completed: !!t.completed,
+              createdAt: t.createdAt,
+              updatedAt: t.updatedAt,
+            }),
+          });
+        } else if (op.op === "delete-todo") {
+          await apiFetch("/api/todos/" + encodeURIComponent(op.id), {
+            method: "DELETE",
+          });
+        } else if (op.op === "upsert-folder") {
+          await apiFetch("/api/folders/" + encodeURIComponent(op.folder.id), {
+            method: "PUT",
+            body: JSON.stringify({
+              name: op.folder.name,
+              createdAt: op.folder.createdAt,
+              updatedAt: op.folder.updatedAt,
+            }),
+          });
+        } else if (op.op === "delete-folder") {
+          await apiFetch("/api/folders/" + encodeURIComponent(op.id), {
+            method: "DELETE",
+          });
+        }
+      }
+
+      function snapshotServerIds() {
+        lastServerIds = {
+          todos: data.todos.map((t) => t.id),
+          folders: data.folders.map((f) => f.id),
+        };
+        try {
+          localStorage.setItem(SERVER_IDS_KEY, JSON.stringify(lastServerIds));
+        } catch {
+          // non-fatal
+        }
+      }
+
+      function mergeServerState(server) {
+        const serverTodos = Array.isArray(server.todos) ? server.todos : [];
+        const serverFolders = Array.isArray(server.folders)
+          ? server.folders
+          : [];
+        const localTodoById = new Map(data.todos.map((t) => [t.id, t]));
+        const localFolderById = new Map(data.folders.map((f) => [f.id, f]));
+        const serverTodoIds = new Set(serverTodos.map((t) => t.id));
+        const serverFolderIds = new Set(serverFolders.map((f) => f.id));
+        const q = loadQueue();
+        const pendingTodoIds = new Set(
+          q
+            .filter((o) => o.op === "upsert-todo" && o.todo)
+            .map((o) => o.todo.id),
+        );
+        const pendingFolderIds = new Set(
+          q
+            .filter((o) => o.op === "upsert-folder" && o.folder)
+            .map((o) => o.folder.id),
+        );
+        const hadBaseline =
+          lastServerIds.todos.length > 0 || lastServerIds.folders.length > 0;
+        const baselineTodoIds = new Set(lastServerIds.todos);
+        const baselineFolderIds = new Set(lastServerIds.folders);
+
+        // Remote deletes (only when we have a baseline, else first-sync union).
+        if (hadBaseline) {
+          data.todos = data.todos.filter(
+            (t) =>
+              pendingTodoIds.has(t.id) ||
+              !baselineTodoIds.has(t.id) ||
+              serverTodoIds.has(t.id),
+          );
+          data.folders = data.folders.filter(
+            (f) =>
+              pendingFolderIds.has(f.id) ||
+              !baselineFolderIds.has(f.id) ||
+              serverFolderIds.has(f.id),
+          );
+          if (currentView.startsWith("folder:")) {
+            const fid = currentView.replace("folder:", "");
+            if (!data.folders.some((f) => f.id === fid)) currentView = "inbox";
+          }
+        }
+
+        for (const sf of serverFolders) {
+          const local = localFolderById.get(sf.id);
+          if (!local) {
+            if (
+              !data.folders.some(
+                (f) => f.name.toLowerCase() === String(sf.name).toLowerCase(),
+              )
+            ) {
+              data.folders.push({ ...sf });
+            }
+          } else if ((sf.updatedAt || 0) > (local.updatedAt || 0)) {
+            Object.assign(local, sf);
+          }
+        }
+        for (const st of serverTodos) {
+          const local = localTodoById.get(st.id);
+          if (!local) {
+            data.todos.push({ ...st });
+          } else if ((st.updatedAt || 0) > (local.updatedAt || 0)) {
+            Object.assign(local, st);
+          }
+        }
+      }
+
+      async function pullAndMerge() {
+        const server = await apiFetch("/api/state");
+        mergeServerState(server);
+        saveData();
+        updateCounts();
+        renderFolders();
+        render();
+        snapshotServerIds();
+      }
+
+      async function initialSync() {
+        if (!authToken) return;
+        setSync("busy", "Syncing…");
+        try {
+          const server = await apiFetch("/api/state");
+          const serverEmpty =
+            (!server.todos || !server.todos.length) &&
+            (!server.folders || !server.folders.length);
+          const localHasData =
+            data.todos.length > 0 || data.folders.length > 0;
+          if (serverEmpty && localHasData) {
+            await apiFetch("/api/sync/import", {
+              method: "POST",
+              body: JSON.stringify({
+                todos: data.todos,
+                folders: data.folders,
+              }),
+            });
+            const fresh = await apiFetch("/api/state");
+            mergeServerState(fresh);
+          } else {
+            mergeServerState(server);
+            // Push any pre-login local changes.
+            for (const t of data.todos) {
+              if (
+                !server.todos.some((s) => s.id === t.id) &&
+                !loadQueue().some(
+                  (o) => o.op === "upsert-todo" && o.todo.id === t.id,
+                )
+              ) {
+                queueTodoUpsert(t);
+              }
+            }
+            for (const f of data.folders) {
+              if (
+                !server.folders.some((s) => s.id === f.id) &&
+                !loadQueue().some(
+                  (o) => o.op === "upsert-folder" && o.folder.id === f.id,
+                )
+              ) {
+                queueFolderUpsert(f);
+              }
+            }
+          }
+          saveData();
+          updateCounts();
+          renderFolders();
+          render();
+          snapshotServerIds();
+          await flushQueue();
+          if (syncState !== "err")
+            setSync("on", authUsername ? "Synced · " + authUsername : "Synced");
+        } catch (err) {
+          if (err && err.code === "AUTH") {
+            logout(true);
+            return;
+          }
+          setSync("err", "Offline — changes queued");
+        } finally {
+          refreshAuthUI();
+        }
+      }
+
+      /* ---------- Auth UI ---------- */
+
+      function openAuthModal() {
+        hideModals();
+        cancelPendingOverlays();
+        const modal = document.getElementById("authModal");
+        if (!modal) return;
+        lastFocused = document.activeElement;
+        pushModalEntry();
+        modal.classList.add("open");
+        updateAuthModal();
+        setTimeout(() => {
+          document.getElementById("authUsername").focus();
+        }, 50);
+      }
+
+      function closeAuthModal() {
+        const modal = document.getElementById("authModal");
+        if (!modal || !modal.classList.contains("open")) return;
+        hideModals();
+        restoreModalFocus();
+        popModalEntry();
+      }
+
+      function updateAuthModal() {
+        const title = document.getElementById("authTitle");
+        const submit = document.getElementById("authSubmitBtn");
+        const modeBtn = document.getElementById("authModeBtn");
+        const err = document.getElementById("authError");
+        if (err) {
+          err.hidden = true;
+          err.textContent = "";
+        }
+        if (authMode === "login") {
+          if (title) title.textContent = "Sign in to sync";
+          if (submit) submit.textContent = "Sign in";
+          if (modeBtn) modeBtn.textContent = "Need an account? Sign up";
+        } else {
+          if (title) title.textContent = "Create account";
+          if (submit) submit.textContent = "Sign up";
+          if (modeBtn) modeBtn.textContent = "Have an account? Sign in";
+        }
+      }
+
+      function toggleAuthMode() {
+        authMode = authMode === "login" ? "signup" : "login";
+        updateAuthModal();
+      }
+
+      function showAuthError(msg) {
+        const err = document.getElementById("authError");
+        if (err) {
+          err.textContent = msg;
+          err.hidden = false;
+        }
+      }
+
+      async function submitAuth() {
+        const username = document
+          .getElementById("authUsername")
+          .value.trim()
+          .toLowerCase();
+        const password = document.getElementById("authPassword").value;
+        const submit = document.getElementById("authSubmitBtn");
+        if (!username || !password) {
+          showAuthError("Enter username and password.");
+          return;
+        }
+        if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+          showAuthError(
+            "Username must be 3-20 chars: letters, numbers, underscore.",
+          );
+          return;
+        }
+        if (submit) submit.disabled = true;
+        try {
+          const res = await apiFetch(
+            authMode === "login" ? "/api/auth/login" : "/api/auth/signup",
+            { method: "POST", body: JSON.stringify({ username, password }) },
+          );
+          authToken = res.token;
+          authUsername = res.user.username;
+          try {
+            localStorage.setItem(TOKEN_KEY, authToken);
+            localStorage.setItem(USERNAME_KEY, authUsername);
+          } catch {
+            // non-fatal
+          }
+          document.getElementById("authPassword").value = "";
+          closeAuthModal();
+          refreshAuthUI();
+          toast(authMode === "login" ? "Signed in — syncing" : "Account created — syncing");
+          await initialSync();
+        } catch (err) {
+          if (err && err.code === "NETWORK") {
+            showAuthError("No server found. Run npm start and open http://localhost:3000.");
+          } else {
+            showAuthError(err.message || "Sign in failed");
+          }
+        } finally {
+          if (submit) submit.disabled = false;
+        }
+      }
+
+      function logout(expired = false) {
+        authToken = null;
+        authUsername = "";
+        try {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USERNAME_KEY);
+          localStorage.setItem(QUEUE_KEY, "[]");
+        } catch {
+          // ignore
+        }
+        clearTimeout(pushTimer);
+        refreshAuthUI();
+        if (expired) toast("Session expired — signed out", "error");
+        else toast("Signed out — local mode");
+      }
+
+      function initSync() {
+        const authModal = document.getElementById("authModal");
+        if (authModal) {
+          authModal.addEventListener("click", (e) => {
+            if (e.target.id === "authModal") closeAuthModal();
+          });
+          authModal.addEventListener("keydown", trapModalTab);
+          authModal.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && e.target.tagName !== "BUTTON") {
+              e.preventDefault();
+              submitAuth();
+            }
+          });
+        }
+
+        refreshAuthUI();
+        if (authToken) {
+          setSync("busy", "Syncing…");
+          initialSync();
+        }
+
+        window.addEventListener("online", () => {
+          if (authToken) initialSync();
+        });
+        window.addEventListener("offline", () => {
+          setSync("err", "Offline — changes queued");
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          if (
+            document.visibilityState === "visible" &&
+            authToken &&
+            Date.now() - lastPullAt > 30000 &&
+            !anyModalOpen() &&
+            navigator.onLine
+          ) {
+            lastPullAt = Date.now();
+            pullAndMerge()
+              .then(() => flushQueue())
+              .catch(() => {});
+          }
+        });
+
+        setInterval(() => {
+          if (
+            authToken &&
+            !document.hidden &&
+            !anyModalOpen() &&
+            navigator.onLine &&
+            !flushing
+          ) {
+            pullAndMerge()
+              .then(() => flushQueue())
+              .catch(() => {});
+          }
+        }, 60000);
+      }
+
+      /* =========================================
        START
     ========================================= */
 
-init();
+      init();
+      initSync();
