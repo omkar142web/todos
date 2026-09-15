@@ -88,10 +88,15 @@
             </div>
             <div class="brand-name">Focus</div>
           </div>
-          <button class="icon-btn primary mobile-add" onclick="openTodoModal()" aria-label="New todo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-            <span class="mobile-add-text">Add</span>
-          </button>
+          <div class="mobile-actions">
+            <button class="icon-btn mobile-auth" id="mobileAuthBtn" onclick="openAuthModal()" aria-label="Sign in" title="Sign in">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </button>
+            <button class="icon-btn primary mobile-add" onclick="openTodoModal()" aria-label="New todo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              <span class="mobile-add-text">Add</span>
+            </button>
+          </div>
         </header>
 
         <div class="mobile-nav">
@@ -114,6 +119,12 @@
             </button>
             <span id="mobileFolderList" style="display:contents"></span>
           </div>
+        </div>
+
+        <div class="mobile-sync" id="mobileSyncCard">
+          <span class="sync-dot" id="mobileSyncDot" aria-hidden="true"></span>
+          <span class="sync-text" id="mobileSyncText">Local only</span>
+          <button class="sync-btn" id="mobileSyncBtn" onclick="openAuthModal()">Sign in</button>
         </div>
 
         <main class="main">

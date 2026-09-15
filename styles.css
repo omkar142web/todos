@@ -1160,6 +1160,14 @@ svg {
 .mobile-nav {
   display: none;
 }
+.mobile-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mobile-sync {
+  display: none;
+}
 
 ::-webkit-scrollbar {
   width: 10px;
@@ -1247,6 +1255,19 @@ svg {
     background: var(--accent);
     color: var(--on-accent);
     border-color: var(--accent);
+  }
+  .mobile-sync {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 16px 0;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
   }
   .main {
     padding: 22px 16px 70px;

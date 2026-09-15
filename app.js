@@ -1319,32 +1319,56 @@ function toast(message, type = "success") {
 
       function setSync(state, text) {
         syncState = state;
-        const dot = document.getElementById("syncDot");
-        const label = document.getElementById("syncText");
-        if (dot) {
+        for (const id of ["syncDot", "mobileSyncDot"]) {
+          const dot = document.getElementById(id);
+          if (!dot) continue;
           dot.classList.remove("on", "busy", "err");
           if (state === "on") dot.classList.add("on");
           else if (state === "busy") dot.classList.add("busy");
           else if (state === "err") dot.classList.add("err");
         }
-        if (label && text !== undefined) label.textContent = text;
+        if (text !== undefined) {
+          for (const id of ["syncText", "mobileSyncText"]) {
+            const label = document.getElementById(id);
+            if (label) label.textContent = text;
+          }
+        }
       }
 
       function refreshAuthUI() {
-        const btn = document.getElementById("syncBtn");
-        const label = document.getElementById("syncText");
+        const btns = [
+          document.getElementById("syncBtn"),
+          document.getElementById("mobileSyncBtn"),
+        ].filter(Boolean);
+        const labels = [
+          document.getElementById("syncText"),
+          document.getElementById("mobileSyncText"),
+        ].filter(Boolean);
+        const mobileAuthBtn = document.getElementById("mobileAuthBtn");
         if (authToken) {
-          if (label && syncState !== "busy")
-            label.textContent = authUsername || "Synced";
-          if (btn) {
+          const text = authUsername || "Synced";
+          for (const label of labels) {
+            if (syncState !== "busy") label.textContent = text;
+          }
+          for (const btn of btns) {
             btn.textContent = "Sign out";
             btn.onclick = logout;
           }
+          if (mobileAuthBtn) {
+            mobileAuthBtn.onclick = logout;
+            mobileAuthBtn.setAttribute("aria-label", "Sign out" + (authUsername ? " (" + authUsername + ")" : ""));
+            mobileAuthBtn.title = "Sign out" + (authUsername ? " (" + authUsername + ")" : "");
+          }
         } else {
-          if (label) label.textContent = "Local only";
-          if (btn) {
+          for (const label of labels) label.textContent = "Local only";
+          for (const btn of btns) {
             btn.textContent = "Sign in";
             btn.onclick = openAuthModal;
+          }
+          if (mobileAuthBtn) {
+            mobileAuthBtn.onclick = openAuthModal;
+            mobileAuthBtn.setAttribute("aria-label", "Sign in");
+            mobileAuthBtn.title = "Sign in";
           }
           setSync("local");
         }
